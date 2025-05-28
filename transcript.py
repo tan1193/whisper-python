@@ -1,7 +1,6 @@
 import whisper
 import yt_dlp
 import os
-import subprocess
 import time  # For performance tracking
 
 def download_audio_from_youtube(youtube_url, output_path="youtube_audio"):
@@ -82,36 +81,6 @@ def transcribe_audio(audio_file, output_name, model_name="turbo"):
     
     return result["text"], timing_info
 
-def convert_audio_to_wav(input_file, output_file=None):
-    """Convert audio file to WAV format for compatibility with transcription"""
-    start_time = time.time()
-    
-    # Create output filename if not provided
-    if output_file is None:
-        base_name = os.path.splitext(input_file)[0]
-        output_file = f"{base_name}_converted.wav"
-    
-    print(f"Converting {input_file} to WAV format...")
-    
-    try:
-        # Run ffmpeg to convert the audio file
-        subprocess.run([
-            'ffmpeg',
-            '-i', input_file,
-            '-ar', '16000',  # 16kHz sample rate (good for speech)
-            '-ac', '1',      # Convert to mono
-            '-y',            # Overwrite output without asking
-            output_file
-        ], check=True, stderr=subprocess.PIPE)
-        
-        elapsed_time = time.time() - start_time
-        print(f"Conversion completed in {elapsed_time:.2f} seconds")
-        return output_file
-        
-    except subprocess.CalledProcessError as e:
-        print(f"Error converting audio: {e.stderr.decode()}")
-        raise
-
 def main():
     overall_start_time = time.time()  # Start overall timer
     
@@ -121,27 +90,11 @@ def main():
         file_name = input("Enter the name of the audio/video file: ")
         output_name = os.path.splitext(file_name)[0]
         
-        # Check if the file is not already a WAV, convert if needed
-        if not file_name.lower().endswith('.wav'):
-            try:
-                conversion_start = time.time()
-                wav_file = convert_audio_to_wav(file_name)
-                conversion_time = time.time() - conversion_start
-                result, timing_info = transcribe_audio(wav_file, output_name)
-                timing_info["conversion"] = conversion_time
-                
-                # Clean up converted file
-                try:
-                    os.remove(wav_file)
-                    print(f"Removed temporary converted file: {wav_file}")
-                except:
-                    pass
-                    
-            except Exception as e:
-                print(f"Error: {str(e)}")
-                return
-        else:
+        try:
             result, timing_info = transcribe_audio(file_name, output_name)
+        except Exception as e:
+            print(f"Error: {str(e)}")
+            return
         
     elif source_type == 'youtube':
         youtube_url = input("Enter the YouTube URL: ")
@@ -174,8 +127,6 @@ def main():
     # Print detailed timing information
     if source_type == 'youtube':
         print(f"YouTube download: {timing_info['download']:.2f} seconds")
-    elif "conversion" in timing_info:
-        print(f"Audio conversion: {timing_info['conversion']:.2f} seconds")
 
     print(f"Model loading: {timing_info['model_loading']:.2f} seconds")
     print(f"Transcription: {timing_info['transcription']:.2f} seconds")
