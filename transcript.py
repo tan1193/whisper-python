@@ -36,7 +36,25 @@ def format_timestamp(seconds):
     seconds = int(seconds % 60)
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
-def transcribe_audio(audio_file, output_name, model_name="turbo"):
+def get_language_choice():
+    """Get language choice from user"""
+    print("\nSelect transcription language:")
+    print("1. English")
+    print("2. Vietnamese")
+    print("3. Auto-detect")
+    
+    while True:
+        choice = input("Enter your choice (1/2/3): ").strip()
+        if choice == '1':
+            return 'en', 'English'
+        elif choice == '2':
+            return 'vi', 'Vietnamese'
+        elif choice == '3':
+            return None, 'Auto-detect'
+        else:
+            print("Invalid choice. Please enter 1, 2, or 3.")
+
+def transcribe_audio(audio_file, output_name, model_name="turbo", language=None):
     """Transcribe audio file using Whisper"""
     overall_start_time = time.time()  # Start overall timer
     
@@ -48,15 +66,31 @@ def transcribe_audio(audio_file, output_name, model_name="turbo"):
     
     transcription_start = time.time()
     print(f"Transcribing {audio_file}...")
-    result = model.transcribe(audio_file)
+    
+    # Transcribe with language option
+    if language:
+        print(f"Using language: {language}")
+        result = model.transcribe(audio_file, language=language)
+    else:
+        print("Using auto-detect language")
+        result = model.transcribe(audio_file)
+    
     transcription_time = time.time() - transcription_start
     print(f"Transcription completed in {transcription_time:.2f} seconds")
     
+    # Detect the language used in transcription
+    detected_language = result.get('language', 'unknown')
+    print(f"Detected/Used language: {detected_language}")
+    
     # Save the result to a text file with timestamps
-    output_file = f"{output_name}_transcript.txt"
+    output_file = f"{output_name}_transcript_{detected_language}.txt"
     with open(output_file, "w", encoding="utf-8") as f:
+        # Write header with language info
+        f.write("--- TRANSCRIPT WITH TIMESTAMPS ---\n")
+        f.write(f"Language: {detected_language}\n")
+        f.write(f"Model: {model_name}\n\n")
+        
         # Write the full text first
-        f.write("--- TRANSCRIPT WITH TIMESTAMPS ---\n\n")
         f.write(f"Full transcript: {result['text']}\n\n")
         f.write("--- SEGMENTS WITH TIMESTAMPS ---\n\n")
         
@@ -76,7 +110,8 @@ def transcribe_audio(audio_file, output_name, model_name="turbo"):
     timing_info = {
         "model_loading": model_load_time,
         "transcription": transcription_time,
-        "total_time": total_time
+        "total_time": total_time,
+        "detected_language": detected_language
     }
     
     return result["text"], timing_info
@@ -86,12 +121,16 @@ def main():
     
     source_type = input("Enter 'file' for local file or 'youtube' for YouTube link: ").strip().lower()
     
+    # Get language choice
+    language_code, language_name = get_language_choice()
+    print(f"Selected language: {language_name}")
+    
     if source_type == 'file':
         file_name = input("Enter the name of the audio/video file: ")
         output_name = os.path.splitext(file_name)[0]
         
         try:
-            result, timing_info = transcribe_audio(file_name, output_name)
+            result, timing_info = transcribe_audio(file_name, output_name, language=language_code)
         except Exception as e:
             print(f"Error: {str(e)}")
             return
@@ -107,7 +146,7 @@ def main():
         output_name = ''.join(c if c.isalnum() or c in ' _-' else '_' for c in video_title)
         output_name = output_name[:50]  # Limit length
         
-        result, timing_info = transcribe_audio(audio_file, output_name)
+        result, timing_info = transcribe_audio(audio_file, output_name, language=language_code)
         timing_info["download"] = download_time
         
         # Clean up downloaded file
@@ -123,6 +162,7 @@ def main():
     total_time = time.time() - overall_start_time
     print("\n--- PERFORMANCE SUMMARY ---")
     print(f"Total execution time: {total_time:.2f} seconds")
+    print(f"Language used: {timing_info['detected_language']}")
     
     # Print detailed timing information
     if source_type == 'youtube':
